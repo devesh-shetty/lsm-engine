@@ -6,16 +6,16 @@ Built as a companion to the blog post: [Building a Storage Engine: WAL, LSM Tree
 
 ## What's inside
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `wal.go` | 171 | Write-ahead log with CRC32 checksums and fsync per write |
-| `memtable.go` | 113 | In-memory sorted buffer using binary search insertion |
-| `bloom.go` | 117 | Bloom filter with FNV-1a double hashing |
-| `sstable.go` | 112 | SSTable writer (data + index + bloom + footer) |
-| `sstable_reader.go` | 153 | SSTable reader with bloom filter check and binary search |
-| `compaction.go` | 91 | K-way merge of sorted SSTables |
-| `db.go` | 147 | Public API: Open, Put, Get, Delete, Close |
-| `db_internal.go` | 164 | Flush, compaction trigger, SSTable loading |
+| File | Purpose |
+|------|---------|
+| `wal.go` | Write-ahead log with CRC32 checksums and fsync per write |
+| `memtable.go` | In-memory sorted buffer using binary search insertion |
+| `bloom.go` | Bloom filter with FNV-1a double hashing |
+| `sstable.go` | SSTable writer (data + index + bloom + footer) |
+| `sstable_reader.go` | SSTable reader with bloom filter check and binary search |
+| `compaction.go` | K-way merge of sorted SSTables |
+| `db.go` | Public API: Open, Put, Get, Delete, Close |
+| `db_internal.go` | Flush, compaction trigger, SSTable loading |
 
 ## Quick start
 
