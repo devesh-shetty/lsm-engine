@@ -67,13 +67,16 @@ func (db *DB) maybeCompact() error {
 	// ensures the most recent write wins when duplicate keys exist.
 	allPaths := db.allSSTables()
 
-	readers := make([]*SSTableReader, len(allPaths))
-	for i, path := range allPaths {
+	readers := make([]*SSTableReader, 0, len(allPaths))
+	for _, path := range allPaths {
 		r, err := OpenSSTable(path)
 		if err != nil {
+			for _, opened := range readers {
+				opened.Close()
+			}
 			return fmt.Errorf("compaction open: %w", err)
 		}
-		readers[i] = r
+		readers = append(readers, r)
 	}
 
 	// Merge everything into one output SSTable

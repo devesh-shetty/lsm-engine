@@ -350,6 +350,103 @@ func TestCompaction(t *testing.T) {
 	}
 }
 
+// --- L0 + L1 compaction: newest wins and tombstones are removed ---
+
+func TestL0L1Compaction(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Use a small memtable so flushes happen frequently.
+	db.mem = NewMemtable(256)
+
+	// Phase 1: write enough keys to trigger at least one compaction,
+	// which produces an L1 file.
+	for i := 0; i < 200; i++ {
+		key := fmt.Sprintf("key-%04d", i)
+		val := fmt.Sprintf("old-%04d", i)
+		if err := db.Put(key, []byte(val)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Ensure everything is flushed and compacted into L1.
+	if db.mem.Len() > 0 {
+		if err := db.flush(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Phase 2: overwrite some keys and delete others in fresh L0 files
+	// on top of the L1.
+	db.mem = NewMemtable(256)
+
+	// Overwrite even-numbered keys with new values.
+	for i := 0; i < 200; i += 2 {
+		key := fmt.Sprintf("key-%04d", i)
+		val := fmt.Sprintf("new-%04d", i)
+		if err := db.Put(key, []byte(val)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Delete keys 1, 3, 5, 7, 9 — they exist in L1 and the
+	// tombstones in L0 must remove them during compaction.
+	for i := 1; i < 10; i += 2 {
+		key := fmt.Sprintf("key-%04d", i)
+		if err := db.Delete(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Flush remaining memtable so everything is on disk.
+	if db.mem.Len() > 0 {
+		if err := db.flush(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Verify: newest values win over older ones.
+	for i := 0; i < 200; i += 2 {
+		key := fmt.Sprintf("key-%04d", i)
+		expected := fmt.Sprintf("new-%04d", i)
+		val, err := db.Get(key)
+		if err != nil {
+			t.Fatalf("%s: expected %q, got error: %v", key, expected, err)
+		}
+		if string(val) != expected {
+			t.Fatalf("%s: expected %q, got %q", key, expected, val)
+		}
+	}
+
+	// Verify: deleted keys stay deleted (tombstones handled correctly
+	// across L0 + L1).
+	for i := 1; i < 10; i += 2 {
+		key := fmt.Sprintf("key-%04d", i)
+		_, err := db.Get(key)
+		if err != ErrKeyNotFound {
+			t.Fatalf("%s should be deleted, got err=%v", key, err)
+		}
+	}
+
+	// Verify: non-deleted odd keys still have old values.
+	for i := 11; i < 200; i += 2 {
+		key := fmt.Sprintf("key-%04d", i)
+		expected := fmt.Sprintf("old-%04d", i)
+		val, err := db.Get(key)
+		if err != nil {
+			t.Fatalf("%s: expected %q, got error: %v", key, expected, err)
+		}
+		if string(val) != expected {
+			t.Fatalf("%s: expected %q, got %q", key, expected, val)
+		}
+	}
+
+	db.Close()
+}
+
 // --- Large workload: 10,000+ keys ---
 
 func TestLargeWorkload(t *testing.T) {
