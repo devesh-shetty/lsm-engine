@@ -447,6 +447,49 @@ func TestL0L1Compaction(t *testing.T) {
 	db.Close()
 }
 
+// --- Crash during flush: incomplete SSTable is skipped, WAL replayed ---
+
+func TestCrashDuringFlush(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write WAL entries that would be recovered on startup.
+	walPath := filepath.Join(dir, "wal")
+	wal, err := OpenWAL(walPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wal.Append(WALEntry{Op: OpPut, Key: []byte("flushed-key"), Value: []byte("flushed-val")})
+	wal.Close()
+
+	// Create an incomplete SSTable file (no valid footer/magic).
+	// This simulates a crash that happened mid-flush.
+	badSST := filepath.Join(dir, "0-000001.sst")
+	if err := os.WriteFile(badSST, []byte("partial garbage data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Open should succeed: skip the corrupt SSTable and replay the WAL.
+	db, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open failed with corrupt SSTable present: %v", err)
+	}
+	defer db.Close()
+
+	// The bad SSTable file should have been removed.
+	if _, err := os.Stat(badSST); !os.IsNotExist(err) {
+		t.Fatal("corrupt SSTable file was not removed")
+	}
+
+	// Data from the WAL should be accessible.
+	val, err := db.Get("flushed-key")
+	if err != nil {
+		t.Fatalf("flushed-key not recovered from WAL: %v", err)
+	}
+	if string(val) != "flushed-val" {
+		t.Fatalf("expected 'flushed-val', got %q", val)
+	}
+}
+
 // --- Large workload: 10,000+ keys ---
 
 func TestLargeWorkload(t *testing.T) {

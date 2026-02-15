@@ -2,6 +2,7 @@ package lsm
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -201,7 +202,11 @@ func (db *DB) loadSSTables() error {
 	for _, info := range ssts {
 		reader, err := OpenSSTable(info.path)
 		if err != nil {
-			return fmt.Errorf("load sst %s: %w", info.path, err)
+			// Incomplete SSTable from a crash mid-flush — remove it.
+			// The WAL still has the data and will be replayed.
+			log.Printf("skipping corrupt SSTable %s: %v", info.path, err)
+			os.Remove(info.path)
+			continue
 		}
 		db.sstables = append(db.sstables, reader)
 	}
